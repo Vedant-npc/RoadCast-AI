@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
-const API_BASE = 'http://127.0.0.1:8000/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api';
 const HORIZONS = ['15_min', '30_min', '45_min', '60_min'];
 const horizonLabels = { '15_min': '15 MIN', '30_min': '30 MIN', '45_min': '45 MIN', '60_min': '60 MIN' };
 const scenarioForecast = { '15_min': { congestion: 71, speed: 29, severity: 'HIGH', change: 3 }, '30_min': { congestion: 75, speed: 26, severity: 'SEVERE', change: 7 }, '45_min': { congestion: 78, speed: 24, severity: 'SEVERE', change: 10 }, '60_min': { congestion: 81, speed: 22, severity: 'SEVERE', change: 13 } };
