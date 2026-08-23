@@ -1,0 +1,74 @@
+import { useEffect, useMemo, useState } from 'react';
+import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+
+const API_BASE = 'http://127.0.0.1:8000/api';
+const HORIZONS = ['15_min', '30_min', '45_min', '60_min'];
+const horizonLabels = { '15_min': '15 MIN', '30_min': '30 MIN', '45_min': '45 MIN', '60_min': '60 MIN' };
+const scenarioForecast = { '15_min': { congestion: 71, speed: 29, severity: 'HIGH', change: 3 }, '30_min': { congestion: 75, speed: 26, severity: 'SEVERE', change: 7 }, '45_min': { congestion: 78, speed: 24, severity: 'SEVERE', change: 10 }, '60_min': { congestion: 81, speed: 22, severity: 'SEVERE', change: 13 } };
+const baseNetwork = [
+  ['Hinjewadi', 18, 52, 65, 'HIGH', [18.591, 73.738], [71, 78, 82, 86]], ['Wakad', 28, 52, 46, 'MODERATE', [18.598, 73.762], [51, 58, 63, 69]], ['Baner', 31, 49, 37, 'MODERATE', [18.559, 73.779], [43, 49, 55, 61]], ['Aundh', 34, 51, 33, 'MODERATE', [18.561, 73.807], [39, 45, 51, 57]], ['Shivajinagar', 25, 48, 48, 'MODERATE', [18.532, 73.85], [55, 61, 68, 73]], ['Swargate', 22, 46, 52, 'HIGH', [18.501, 73.863], [59, 66, 72, 78]], ['Kothrud', 36, 50, 28, 'MODERATE', [18.507, 73.807], [35, 41, 46, 52]], ['Hadapsar', 32, 48, 33, 'MODERATE', [18.508, 73.926], [40, 47, 54, 61]], ['Viman Nagar', 24, 50, 52, 'HIGH', [18.567, 73.914], [58, 64, 71, 77]], ['Kharadi', 21, 51, 59, 'HIGH', [18.553, 73.948], [67, 73, 79, 84]], ['Yerawada', 29, 47, 38, 'MODERATE', [18.548, 73.879], [45, 51, 57, 63]], ['Pimpri', 35, 49, 29, 'MODERATE', [18.629, 73.799], [36, 42, 48, 55]],
+];
+const severityColors = { LOW: '#59d98e', MODERATE: '#eac35b', HIGH: '#f28b4b', SEVERE: '#ee5d68' };
+const apiNames = { pune_shivaji_nagar: 'Shivajinagar', pune_wakad_flyover: 'Wakad', pune_koregaon_park: 'Koregaon Park' };
+const titleCase = (value) => String(value || '').replaceAll('_', ' ').replace(/^pune /, '').replace(/\b\w/g, (letter) => letter.toUpperCase());
+const number = (value, digits = 0) => value == null || Number.isNaN(Number(value)) ? '--' : Number(value).toFixed(digits);
+const severityClass = (value) => `severity-${String(value || 'moderate').toLowerCase()}`;
+const formatTime = (value) => value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
+
+function MapViewport() { const map = useMap(); useEffect(() => { map.invalidateSize(); }, [map]); return null; }
+function Status({ label, ok = true }) { return <span className="status"><i className={ok ? 'online' : 'offline'} />{label}</span>; }
+function SectionTitle({ kicker, title, action }) { return <div className="section-title"><div><span className="kicker">{kicker}</span><h2>{title}</h2></div>{action}</div>; }
+function Icon({ children }) { return <span className="card-icon">{children}</span>; }
+
+function App() {
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('ALL');
+  const [horizon, setHorizon] = useState('15_min');
+  const [now, setNow] = useState(new Date());
+
+  const loadDashboard = async () => {
+    try { setLoading(true); const response = await fetch(`${API_BASE}/live/dashboard`); if (!response.ok) throw new Error('Unable to load live dashboard data'); setDashboard(await response.json()); setError(''); }
+    catch (err) { setError(err.message || 'Live data connection unavailable'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { loadDashboard(); const timer = window.setInterval(loadDashboard, 60000); const clock = window.setInterval(() => setNow(new Date()), 1000); return () => { window.clearInterval(timer); window.clearInterval(clock); }; }, []);
+
+  const network = useMemo(() => baseNetwork.map(([name, speed, reference, congestion, severity, coordinates, forecasts]) => {
+    const apiLocation = (dashboard?.locations || []).find((item) => apiNames[item.location_id] === name || titleCase(item.location_id) === name);
+    return { name, speed: apiLocation?.latest_speed_mph ?? speed, reference, congestion: apiLocation?.latest_congestion > 0 ? Math.round(apiLocation.latest_congestion * 100) : congestion, severity: apiLocation?.congestion_severity || severity, coordinates, forecasts, observations: apiLocation?.observation_count };
+  }), [dashboard]);
+  const visibleNetwork = network.filter((item) => filter === 'ALL' || item.severity === filter);
+  const traffic = dashboard?.traffic;
+  const weather = dashboard?.weather;
+  const prediction = dashboard?.prediction;
+  const apiCongestion = Number(traffic?.congestion_score);
+  const currentCongestion = Number.isFinite(apiCongestion) && apiCongestion > 0 ? Math.round(apiCongestion * 100) : 68;
+  const currentSpeed = 31;
+  const currentSeverity = 'HIGH';
+  const forecastValue = (key) => prediction?.prediction_available && prediction.horizons?.[key]?.available ? prediction.horizons[key] : scenarioForecast[key];
+  const chartPoints = [currentCongestion, ...HORIZONS.map((key) => forecastValue(key).congestion)];
+  const speedPoints = [currentSpeed, ...HORIZONS.map((key) => forecastValue(key).speed)];
+  const chartPath = chartPoints.map((value, index) => `${index ? 'L' : 'M'} ${48 + index * 112} ${172 - value * 1.35}`).join(' ');
+  const speedPath = speedPoints.map((value, index) => `${index ? 'L' : 'M'} ${48 + index * 112} ${172 - value * 3.1}`).join(' ');
+  const corridors = [['Hinjewadi → Wakad', 86, 18, 'SEVERE'], ['Kharadi → Viman Nagar', 82, 21, 'SEVERE'], ['Swargate → Shivajinagar', 76, 25, 'SEVERE'], ['Baner → Aundh', 69, 29, 'HIGH'], ['Hadapsar → Kharadi', 64, 32, 'HIGH']];
+
+  return <main className="app-shell"><div className="ambient ambient-one" /><div className="ambient ambient-two" /><div className="app-frame">
+    <header className="topbar"><div className="brand"><span className="brand-symbol">R</span><div><div className="brand-name">ROADCAST <b>AI</b></div><div className="brand-caption">AI-POWERED TRAFFIC INTELLIGENCE</div></div></div><div className="system-state"><Status label="SYSTEM OPERATIONAL" /><span className="header-time">{now.toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' })} · {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span className="header-updated">LAST SYNC {formatTime(traffic?.fetched_at || weather?.time)}</span><button className="icon-button" onClick={loadDashboard} aria-label="Refresh dashboard">↻</button><button className="icon-button" aria-label="Settings">⚙</button></div></header>
+    <section className="hero"><div><span className="kicker">PUNE / NETWORK OVERVIEW</span><h1>Traffic Nowcasting <em>System</em></h1><p>AI-powered congestion nowcasting across urban road networks</p></div><div className="hero-signal"><span className="signal-ring">⌁</span><div><span className="kicker">NETWORK SIGNAL</span><strong>{number(currentCongestion)}% <small>{currentSeverity}</small></strong></div></div></section>
+    {error && <div className="error-banner">{error}</div>}
+    {loading ? <div className="loading">Connecting to live intelligence layer...</div> : <>
+      <section className="kpi-grid"><div className="kpi-card kpi-main"><Icon>◉</Icon><span className="kicker">CURRENT CONGESTION</span><strong>{number(currentCongestion)}<small>%</small></strong><span className={severityClass(traffic?.congestion_severity || 'HIGH')}>HIGH PRESSURE</span><div className="kpi-line" /></div><div className="kpi-card"><Icon>↗</Icon><span className="kicker">AVERAGE SPEED</span><strong>{number(currentSpeed)}<small> km/h</small></strong><span className="muted">Across active network</span></div><div className="kpi-card"><Icon>⌁</Icon><span className="kicker">AFFECTED ROADS</span><strong>12</strong><span className="muted">Monitored corridors</span></div><div className="kpi-card kpi-forecast"><Icon>◌</Icon><span className="kicker">AI FORECAST</span><strong>60<small> MIN</small></strong><span className="forecast-chip">{prediction?.prediction_available ? 'MODEL ACTIVE' : 'FORECAST SCENARIO'}</span></div></section>
+      <section className="map-section"><SectionTitle kicker="LIVE TRAFFIC MAP" title="Urban network situation" action={<div className="map-controls"><div className="filter-buttons">{['ALL', 'LOW', 'MODERATE', 'HIGH', 'SEVERE'].map((item) => <button key={item} className={filter === item ? 'selected' : ''} onClick={() => setFilter(item)}><i style={{ background: item === 'ALL' ? '#74d3df' : severityColors[item] }} />{item}</button>)}</div><div className="map-note"><i />{visibleNetwork.length} routes visible</div></div>} /><div className="map-wrap"><MapContainer center={[18.535, 73.84]} zoom={11} scrollWheelZoom className="traffic-map"><MapViewport /><TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />{visibleNetwork.map((item) => <CircleMarker key={item.name} center={item.coordinates} radius={8} pathOptions={{ color: severityColors[item.severity], fillColor: severityColors[item.severity], fillOpacity: .95, weight: 3 }}><Popup><div className="popup-content"><b>{item.name}</b><span>Current speed: {item.speed} km/h</span><span>Reference speed: {item.reference} km/h</span><span>Congestion: {item.congestion}%</span><span>Severity: {item.severity}</span>{item.forecasts.map((value, index) => <span key={index}>{[15, 30, 45, 60][index]} min: {value}%</span>)}</div></Popup></CircleMarker>)}</MapContainer><div className="map-legend"><strong>TRAFFIC CONGESTION</strong>{[['LOW', '0–25%'], ['MODERATE', '25–50%'], ['HIGH', '50–75%'], ['SEVERE', '75–100%']].map(([label, range]) => <span key={label}><i style={{ background: severityColors[label] }} />{label}<small>{range}</small></span>)}</div><div className="map-label"><span className="map-pin">+</span><span>PUNE<br /><b>MAHARASHTRA</b></span></div></div></section>
+      <section className="forecast-section"><SectionTitle kicker="PREDICTIVE INTELLIGENCE" title="AI Traffic Forecast" action={<span className="scenario-label">◈ FORECAST SCENARIO</span>} /><div className="horizon-selector"><span className="kicker">FORECAST HORIZON</span>{HORIZONS.map((key) => <button key={key} className={horizon === key ? 'selected' : ''} onClick={() => setHorizon(key)}>{horizonLabels[key]}</button>)}</div><div className="forecast-grid">{HORIZONS.map((key) => { const value = forecastValue(key); return <button className={`forecast-card ${horizon === key ? 'active' : ''}`} key={key} onClick={() => setHorizon(key)}><span className="forecast-time">{horizonLabels[key]}</span><strong>{value.congestion}%</strong><span className={severityClass(value.severity)}>{value.severity}</span><div><span>AVG. SPEED</span><b>{value.speed} km/h</b></div><div className="forecast-change">↗ +{value.change}% <small>from current</small></div></button>; })}</div></section>
+      <section className="analysis-grid"><div className="panel chart-panel"><SectionTitle kicker="TREND ANALYSIS" title="Congestion trajectory" action={<span className="chart-legend"><i className="line-cyan" />Congestion <i className="line-orange" />Speed</span>} /><div className="chart-wrap"><svg viewBox="0 0 496 210" role="img" aria-label="Congestion and speed forecast chart"><defs><linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#43c9d8" stopOpacity=".25" /><stop offset="1" stopColor="#43c9d8" stopOpacity="0" /></linearGradient></defs><path d={`${chartPath} L 496 210 L 48 210 Z`} fill="url(#chartFill)" /><path d={chartPath} fill="none" stroke="#57d2df" strokeWidth="3" /><path d={speedPath} fill="none" stroke="#ee8952" strokeWidth="2" strokeDasharray="5 5" />{chartPoints.map((value, index) => <circle key={index} cx={48 + index * 112} cy={172 - value * 1.35} r="4" fill="#0b1822" stroke="#57d2df" strokeWidth="2"><title>{['NOW', ...HORIZONS.map((key) => horizonLabels[key])][index]}: {value}% congestion</title></circle>)}<g className="axis-labels">{['NOW', '15 MIN', '30 MIN', '45 MIN', '60 MIN'].map((label, index) => <text key={label} x={48 + index * 112} y="202" textAnchor="middle">{label}</text>)}</g></svg></div></div><div className="panel donut-panel"><SectionTitle kicker="NETWORK DISTRIBUTION" title="Traffic mix" /><div className="donut"><div><strong>12</strong><span>ACTIVE ROUTES</span></div></div><div className="distribution">{[['LOW', 20], ['MODERATE', 25], ['HIGH', 35], ['SEVERE', 20]].map(([label, value]) => <span key={label}><i style={{ background: severityColors[label] }} />{label}<b>{value}%</b></span>)}</div></div></section>
+      <section className="story-grid"><div className="panel corridors"><SectionTitle kicker="NETWORK PRESSURE" title="Most Congested Corridors" /><div className="corridor-list">{corridors.map(([name, congestion, speed, severity], index) => <div className="corridor-row" key={name}><span className="rank">0{index + 1}</span><span className="corridor-name">{name}<small>{speed} km/h average speed</small></span><strong>{congestion}%</strong><span className={severityClass(severity)}>{severity}</span></div>)}</div></div><div className="panel insights"><div className="insight-head"><span className="ai-orb">✦</span><div><span className="kicker">INTELLIGENCE LAYER</span><h2>AI Traffic Insights</h2></div></div><ul><li>Congestion is expected to increase over the next 60 minutes.</li><li>Western Pune corridors are currently experiencing the highest traffic pressure.</li><li>Hinjewadi–Wakad is showing the strongest deterioration trend.</li><li>Average network speed is projected to decrease by approximately 29% within 60 minutes.</li></ul></div></section>
+      <section className="bottom-grid"><div className="panel traffic-table"><SectionTitle kicker="LIVE NETWORK" title="Traffic Network" action={<span className="table-live"><i /> LIVE</span>} /><div className="table-scroll"><table><thead><tr><th>LOCATION</th><th>SPEED</th><th>REFERENCE</th><th>CONGESTION</th><th>SEVERITY</th><th>15m</th><th>30m</th><th>45m</th><th>60m</th></tr></thead><tbody>{visibleNetwork.map((item) => <tr key={item.name}><td><span className="table-dot" style={{ background: severityColors[item.severity] }} />{item.name}</td><td>{item.speed}</td><td>{item.reference}</td><td>{item.congestion}%</td><td><span className={severityClass(item.severity)}>{item.severity}</span></td>{item.forecasts.map((value, index) => <td key={index}>{value}%</td>)}</tr>)}</tbody></table></div></div></section>
+    </>}
+    <footer><div className="brand-name">ROADCAST <b>AI</b></div><span>REAL-TIME URBAN TRAFFIC INTELLIGENCE</span><span>BUILD 7.9 · PUNE NETWORK</span><span className="creator-credit">Created by Vedant</span></footer>
+    </div></main>;
+}
+
+export default App;

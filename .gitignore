@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.env.local
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+backend/data/*.sqlite3
+backend/models/random_forest_*.pkl
+data/raw/metr-la/train.parquet
+data/raw/metr-la/~$test.parquet
+data/raw/metr-la/*.parquet
+backend/artifacts/
+
+# IDE
+.vscode/
+.DS_Store
+
+# Logs
+*.log
