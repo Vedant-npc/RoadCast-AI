@@ -67,3 +67,15 @@ def test_live_dashboard_handles_provider_failure(monkeypatch):
     assert payload["traffic"] is None
     assert payload["status"] == "partial"
     assert payload["prediction"]["prediction_available"] is False
+
+
+def test_cors_allows_deployed_frontend_origin():
+    response = client.options(
+        "/api/live/dashboard",
+        headers={
+            "Origin": "https://roadcast-ai.vercel.app",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"

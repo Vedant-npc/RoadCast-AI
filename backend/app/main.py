@@ -14,6 +14,7 @@ from app.schemas import LiveDataResponse, LiveNowcastStatus, SensorSummary, Sens
 from app.services.live_adapter import adapt_live_traffic
 from app.services.open_meteo import LiveWeatherError, OpenMeteoClient
 from app.services.tomtom import LiveTrafficError, TomTomTrafficClient
+from traffic_store import TrafficStore
 from src.models.nowcasting import (
     CongestionThresholds,
     calculate_congestion_score,
@@ -45,11 +46,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+TrafficStore(DEFAULT_DATABASE).initialize()
 
 
 @lru_cache(maxsize=2)

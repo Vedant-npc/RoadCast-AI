@@ -323,12 +323,18 @@ This allows users to understand how traffic conditions may evolve over the next 
     Frontend
 
         Vercel
+        Set the `VITE_API_BASE` environment variable to the deployed backend
+        URL followed by `/api` (for example, `https://<your-render-service>.onrender.com/api`).
 
     Backend
 
         Render 
+        Deploy with the included `render.yaml` blueprint. The frontend calls
+        `/api` by default during local development; Vite proxies those requests
+        to `http://127.0.0.1:8000`.
 
-The frontend communicates with the FastAPI backend through REST APIs.
+The backend allows cross-origin requests because the dashboard uses a public,
+unauthenticated API. Do not send credentials or private data through these endpoints.
 
 
 🔬 Future Improvements
